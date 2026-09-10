@@ -24,7 +24,6 @@
 	<string>EasyReading, taradığınız veya yüklediğiniz belgeleri okuyabilmek için fotoğraf kütüphanenize erişim istiyor.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>EasyReading, belgeleri taramak ve okumak için kameranıza erişim istiyor.</string>
-	<string>EasyReading, taradığınız veya yüklediğiniz belgeleri okuyabilmek için fotoğraf kütüphanenize erişim istiyor.</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
