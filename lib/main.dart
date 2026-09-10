@@ -33,6 +33,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:collection';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_fonts/google_fonts.dart';
 import 'package:country_flags/country_flags.dart';
 import 'package:flutter/rendering.dart';
@@ -6781,8 +6782,11 @@ class PremiumService {
     return diff < 0 ? 0 : diff;
   }
 
-  static const String _rcApiKey =
-      'goog_KscqZrzNUbyFyDYBRIkmLePZSRY'; // RevenueCat Android API key
+  static final String _rcApiKey = kIsWeb
+      ? ''
+      : (Platform.isIOS
+          ? 'appl_hpzNsNYaDhHYJWcMmavRGpmeWug' // RevenueCat iOS API key
+          : 'goog_KscqZrzNUbyFyDYBRIkmLePZSRY'); // RevenueCat Android API key
 
   // ── Init ────────────────────────────────────────────────────
   Future<void> load() async {
@@ -6804,6 +6808,11 @@ class PremiumService {
 
   Future<void> _refreshPremiumStatus() async {
     try {
+      final isConfigured = await Purchases.isConfigured;
+      if (!isConfigured) {
+        isPremium.value = false;
+        return;
+      }
       final customerInfo = await Purchases.getCustomerInfo();
       isPremium.value =
           customerInfo.entitlements.active.containsKey('Beytans Apps Pro');
