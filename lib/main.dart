@@ -20319,6 +20319,20 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         },
       );
     }
+    // Bazı kısaltmalar (EPUB gibi) tamamen büyük harfli kalırsa TTS harf harf okuyor;
+    // küçük harfe çevirip tek kelime gibi okunmasını sağlıyoruz.
+    const Map<String, String> forceLowercaseAcronyms = {
+      'EPUB': 'epub',
+    };
+    for (final entry in forceLowercaseAcronyms.entries) {
+      result = result.replaceAllMapped(
+        RegExp(
+            '(?<![a-zA-ZğüşıöçĞÜŞİÖÇ])${RegExp.escape(entry.key)}(?![a-zA-ZğüşıöçĞÜŞİÖÇ])',
+            caseSensitive: false),
+        (m) => entry.value,
+      );
+    }
+
     return result;
   }
 
