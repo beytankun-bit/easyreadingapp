@@ -13434,6 +13434,13 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   List<_CloudWordTiming> _cloudTimings = [];
   int _cloudLastWordIdx = -1;
 
+  String _lastPreparedTtsText = '';
+
+  Future<String> _prepareTtsTextForCloud(String rawInput) async {
+    await _ttsSpeakFinal(rawInput, actuallySpeak: false);
+    return _lastPreparedTtsText;
+  }
+
   bool _shouldUseCloudTts(String locale) {
     return Platform.isIOS && locale.toLowerCase().startsWith('tr');
   }
@@ -18289,12 +18296,27 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   }
 
   Future<void> _speakSentenceViaCloud(SentenceChunk chunk) async {
-    final text = _normalizeText(chunk.text);
-    if (text.isEmpty) {
+    final rawSentenceText = chunk.text;
+    final normalized = _normalizeText(rawSentenceText);
+    if (normalized.isEmpty) {
       _currentSentenceIndex++;
       await _ttsRunNextSentence();
       return;
     }
+
+    // Android'de zaten çalışan tam temizleme hattını (unvanlar, tarihler,
+    // sayılar, semboller vb.) burada da kullan — flutter_tts'e hiç
+    // dokunmadan, sadece metni hazırlamak için.
+    final cleanedText = await _prepareTtsTextForCloud(normalized);
+    if (cleanedText.trim().isEmpty) {
+      _currentSentenceIndex++;
+      await _ttsRunNextSentence();
+      return;
+    }
+
+    // Temizlenmiş (cloud'a giden) metin ↔ ekrandaki orijinal metin eşlemesi —
+    // vurgulamanın doğru karaktere denk gelmesi için gerekli.
+    final cloudSpokenToOrigMap = _buildSpokenToOrigMap(normalized, cleanedText);
 
     _isCloudSentence = true;
     _ttsBusy = true;
@@ -18306,7 +18328,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     }
 
     try {
-      final result = await CloudTtsService.synthesize(text);
+      final result = await CloudTtsService.synthesize(cleanedText);
       _cloudTimings = result.timings;
       _cloudLastWordIdx = -1;
 
@@ -18330,10 +18352,17 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         if (idx == -1 || idx == _cloudLastWordIdx) return;
         _cloudLastWordIdx = idx;
         final w = _cloudTimings[idx];
-        final uiStart = (chunk.globalStart + w.charStart)
-            .clamp(0, _uiTextForReading.length);
+
+        // cleanedText ofsetlerini normalized (orijinal) ofsetlere çevir
+        final mapLen = cloudSpokenToOrigMap.length;
+        final origStart =
+            cloudSpokenToOrigMap[w.charStart.clamp(0, mapLen - 1)];
+        final origEnd = cloudSpokenToOrigMap[w.charEnd.clamp(0, mapLen - 1)];
+
+        final uiStart =
+            (chunk.globalStart + origStart).clamp(0, _uiTextForReading.length);
         final uiEnd =
-            (chunk.globalStart + w.charEnd).clamp(0, _uiTextForReading.length);
+            (chunk.globalStart + origEnd).clamp(0, _uiTextForReading.length);
         if (_readingMode == ReadingMode.both ||
             _readingMode == ReadingMode.voiceOnly) {
           _handleProgress(uiStart, uiEnd);
@@ -19325,7 +19354,8 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   /// Single final gate for all TTS speech. Uses TTS locale (_selectedLocale), not UI language.
   /// Call this instead of _tts.speak so Roman ordinals and yy are normalized for Turkish.
   /// Roman numerals are locked before normalization so they are never split.
-  Future<int> _ttsSpeakFinal(String rawInput) async {
+  Future<int> _ttsSpeakFinal(String rawInput,
+      {bool actuallySpeak = true}) async {
     final bool isTr =
         (_selectedLocale?.toLowerCase().startsWith('tr') ?? false);
 
@@ -20218,6 +20248,11 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     final String raw = s;
     final String langCode = _selectedLocale ?? 'en-US';
     final String spokenTtsText = _normalizeUrlLikeTextForTts(raw, langCode);
+
+    if (!actuallySpeak) {
+      _lastPreparedTtsText = spokenTtsText;
+      return 1;
+    }
 
     return await _tts.speak(spokenTtsText);
   }
