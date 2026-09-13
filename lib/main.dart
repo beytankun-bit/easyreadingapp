@@ -492,16 +492,6 @@ Future<void> _updateLastUsedTimestamp() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  if (Platform.isIOS) {
-    // ── iOS-ONLY DIAGNOSTIC BOOT ──────────────────────────────
-    // Android akışına dokunmuyor; sadece iOS beyaz ekran sorununu
-    // teşhis etmek için geçici olarak eklendi.
-    runApp(const _IosBootDiagnosticApp());
-    return;
-  }
-
-  // ── ANDROID FLOW — DEĞİŞTİRİLMEDİ ────────────────────────────
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -527,122 +517,6 @@ void main() async {
   runApp(EasyReadingTestApp(initialRoute: initialRoute));
 }
 
-// ══════════════════════════════════════════════════════════════
-// iOS-ONLY DIAGNOSTIC BOOT — GEÇİCİ, sorun çözülünce kaldırılacak
-// ══════════════════════════════════════════════════════════════
-
-class _IosBootDiagnosticApp extends StatefulWidget {
-  const _IosBootDiagnosticApp();
-
-  @override
-  State<_IosBootDiagnosticApp> createState() => _IosBootDiagnosticAppState();
-}
-
-class _IosBootDiagnosticAppState extends State<_IosBootDiagnosticApp> {
-  final List<String> _log = [];
-  bool _done = false;
-  String? _initialRoute;
-
-  @override
-  void initState() {
-    super.initState();
-    _runBoot();
-  }
-
-  void _addLog(String msg) {
-    debugPrint('[BOOT] $msg');
-    if (mounted) setState(() => _log.add(msg));
-  }
-
-  Future<bool> _step(
-    String label,
-    Future<void> Function() action, {
-    Duration timeout = const Duration(seconds: 8),
-  }) async {
-    _addLog('▶ $label ...');
-    try {
-      await action().timeout(timeout);
-      _addLog('✅ $label OK');
-      return true;
-    } on TimeoutException {
-      _addLog('⏱️ $label TIMEOUT (${timeout.inSeconds}s)');
-      return false;
-    } catch (e) {
-      _addLog('❌ $label HATA: $e');
-      return false;
-    }
-  }
-
-  Future<void> _runBoot() async {
-    await _step('Firebase.initializeApp', () async {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
-    });
-
-    await _step('_checkAndResetForNewBuild', () async {
-      await _checkAndResetForNewBuild();
-    });
-
-    await _step('PremiumService.load (RevenueCat)', () async {
-      await PremiumService.instance.load();
-    });
-
-    await _step('GoogleFonts.pendingFonts', () async {
-      await GoogleFonts.pendingFonts([GoogleFonts.lora()]);
-    });
-
-    await _step('NotificationService.init', () async {
-      await NotificationService.init();
-    });
-
-    // Bunlar zaten unawaited'tı, boot'u bloklamasın diye dokunmuyoruz
-    unawaited(PushService.register());
-    unawaited(_updateLastUsedTimestamp());
-
-    bool firstOpenShown = false;
-    await _step('isFirstOpenShown', () async {
-      firstOpenShown = await PremiumService.instance.isFirstOpenShown();
-    });
-
-    _initialRoute = firstOpenShown ? '/reading' : '/welcome';
-    _addLog('🎉 Tüm adımlar tamamlandı, uygulamaya geçiliyor...');
-
-    await Future.delayed(const Duration(milliseconds: 1500));
-    if (mounted) setState(() => _done = true);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_done && _initialRoute != null) {
-      return EasyReadingTestApp(initialRoute: _initialRoute!);
-    }
-
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: ListView(
-              children: _log
-                  .map((line) => Text(
-                        line,
-                        style: const TextStyle(
-                          color: Colors.greenAccent,
-                          fontFamily: 'monospace',
-                          fontSize: 13,
-                        ),
-                      ))
-                  .toList(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 // ================== ISOLATE HELPER FUNCTIONS (top-level for compute()) ==================
 
 // Maks kaç sayfa yüklensin (büyük PDF'ler için)
@@ -17178,8 +17052,6 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       _voices = await _loadVoicesWithFallback();
       _voices.sort((a, b) => humanizeLocale(a['locale'] ?? '')
           .compareTo(humanizeLocale(b['locale'] ?? '')));
-
-      final currentEngine = await _tts.getDefaultEngine;
 
       // Filter to only supported languages
       const supportedLocales = [
