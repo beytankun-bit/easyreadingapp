@@ -9,6 +9,9 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
+const { onCall } = require("firebase-functions/v2/https");
+const textToSpeech = require("@google-cloud/text-to-speech");
+const ttsClient = new textToSpeech.TextToSpeechClient();
 
 initializeApp();
 const db = getFirestore();
@@ -277,3 +280,62 @@ exports.reengagementPush = onSchedule(
     console.log(`reengagementPush: ${sent} bildirim gonderildi.`);
   }
 );
+
+// ── GEÇİCİ: Türkçe seslerin tam listesini görmek için ──
+exports.listTurkishVoices = onCall(
+  { region: "europe-west3" },
+  async () => {
+    const [result] = await ttsClient.listVoices({ languageCode: "tr-TR" });
+    return {
+      voices: result.voices.map((v) => ({
+        name: v.name,
+        gender: v.ssmlGender,
+        naturalSampleRateHertz: v.naturalSampleRateHertz,
+      })),
+    };
+  }
+);
+
+// ── Türkçe (iOS) için bulut TTS: metni SSML mark'larla böler,
+// WaveNet-B (erkek) ile seslendirir, ses + kelime zaman damgalarını döner ──
+exports.synthesizeTurkishTts = onCall(
+  { region: "europe-west3", timeoutSeconds: 60 },
+  async (request) => {
+    const text = (request.data && request.data.text) || "";
+    if (!text.trim()) {
+      throw new Error("text bos olamaz");
+    }
+
+    // Kelimelere ayır, her kelimenin önüne bir <mark> koy
+    const words = text.split(/\s+/).filter((w) => w.length > 0);
+    const ssmlParts = words.map(
+      (w, i) => `<mark name="w${i}"/>${escapeXml(w)}`
+    );
+    const ssml = `<speak>${ssmlParts.join(" ")}</speak>`;
+
+    const [response] = await ttsClient.synthesizeSpeech({
+      input: { ssml },
+      voice: { languageCode: "tr-TR", name: "tr-TR-Wavenet-B" },
+      audioConfig: { audioEncoding: "MP3" },
+      enableTimePointing: ["SSML_MARK"],
+    });
+
+    return {
+      audioContent: response.audioContent.toString("base64"),
+      timepoints: (response.timepoints || []).map((tp) => ({
+        markName: tp.markName,
+        timeSeconds: tp.timeSeconds,
+      })),
+      wordCount: words.length,
+    };
+  }
+);
+
+function escapeXml(s) {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}

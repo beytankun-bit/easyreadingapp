@@ -47,6 +47,9 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:in_app_update/in_app_update.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:just_audio/just_audio.dart' as ja;
+import 'package:path_provider/path_provider.dart';
 
 // ── Bildirim servisi — çoklu dil desteği
 class NotificationService {
@@ -13424,6 +13427,17 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   int _resumeSentenceOffset = 0;
   // Sentence-based TTS queue
   List<SentenceChunk> _sentenceChunks = [];
+  ja.AudioPlayer? _cloudPlayer;
+  StreamSubscription<Duration>? _cloudPosSub;
+  StreamSubscription<ja.PlayerState>? _cloudStateSub;
+  bool _isCloudSentence = false;
+  List<_CloudWordTiming> _cloudTimings = [];
+  int _cloudLastWordIdx = -1;
+
+  bool _shouldUseCloudTts(String locale) {
+    return Platform.isIOS && locale.toLowerCase().startsWith('tr');
+  }
+
   int _currentSentenceIndex = 0;
   int _ocrImageCounter = 0; // OCR fotoğraf sayacı → JPG_1, JPG_2 vb.
   int _lastBuiltTextHash = 0; // Track text hash to detect changes
@@ -15812,6 +15826,9 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     _immersiveAutoHideTimer?.cancel();
+    _cloudPosSub?.cancel();
+    _cloudStateSub?.cancel();
+    _cloudPlayer?.dispose();
     _voiceLimitTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _isDisposed = true;
@@ -18271,6 +18288,94 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     await _ttsRunNext();
   }
 
+  Future<void> _speakSentenceViaCloud(SentenceChunk chunk) async {
+    final text = _normalizeText(chunk.text);
+    if (text.isEmpty) {
+      _currentSentenceIndex++;
+      await _ttsRunNextSentence();
+      return;
+    }
+
+    _isCloudSentence = true;
+    _ttsBusy = true;
+    if (mounted) {
+      setState(() {
+        _isSpeaking = true;
+        _ttsPaused = false;
+      });
+    }
+
+    try {
+      final result = await CloudTtsService.synthesize(text);
+      _cloudTimings = result.timings;
+      _cloudLastWordIdx = -1;
+
+      _cloudPlayer ??= ja.AudioPlayer();
+      final duration = await _cloudPlayer!.setFilePath(result.audioFilePath);
+      if (_cloudTimings.isNotEmpty && duration != null) {
+        _cloudTimings.last.timeEnd = duration.inMilliseconds / 1000.0;
+      }
+
+      await _cloudPosSub?.cancel();
+      _cloudPosSub = _cloudPlayer!.positionStream.listen((pos) {
+        if (!mounted || _ttsStopRequested || _ttsPaused) return;
+        final seconds = pos.inMilliseconds / 1000.0;
+        int idx = -1;
+        for (final t in _cloudTimings) {
+          if (seconds >= t.timeStart && seconds < t.timeEnd) {
+            idx = _cloudTimings.indexOf(t);
+            break;
+          }
+        }
+        if (idx == -1 || idx == _cloudLastWordIdx) return;
+        _cloudLastWordIdx = idx;
+        final w = _cloudTimings[idx];
+        final uiStart = (chunk.globalStart + w.charStart)
+            .clamp(0, _uiTextForReading.length);
+        final uiEnd =
+            (chunk.globalStart + w.charEnd).clamp(0, _uiTextForReading.length);
+        if (_readingMode == ReadingMode.both ||
+            _readingMode == ReadingMode.voiceOnly) {
+          _handleProgress(uiStart, uiEnd);
+        }
+      });
+
+      await _cloudStateSub?.cancel();
+      _cloudStateSub = _cloudPlayer!.playerStateStream.listen((state) async {
+        if (state.processingState == ja.ProcessingState.completed) {
+          await _cloudStateSub?.cancel();
+          _cloudPosSub?.cancel();
+          _isCloudSentence = false;
+          _ttsBusy = false;
+          if (_ttsStopRequested || _ttsPaused) return;
+          if (_currentSentenceIndex < _sentenceChunks.length) {
+            _currentSentenceIndex++;
+            if (_currentSentenceIndex < _sentenceChunks.length) {
+              _ttsBusy = true;
+              await _ttsRunNextSentence();
+            } else {
+              _ttsRunning = false;
+              if (mounted) {
+                setState(() {
+                  _isSpeaking = false;
+                  _ttsPaused = false;
+                });
+              }
+            }
+          }
+        }
+      });
+
+      await _cloudPlayer!.play();
+    } catch (e) {
+      debugPrint('Cloud TTS hatasi: $e');
+      _isCloudSentence = false;
+      _ttsBusy = false;
+      _currentSentenceIndex++;
+      await _ttsRunNextSentence();
+    }
+  }
+
   // Speak the current sentence chunk
   Future<void> _ttsRunNextSentence() async {
     if (_ttsStopRequested) {
@@ -18304,8 +18409,12 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     // Get current sentence chunk
     final chunk = _sentenceChunks[_currentSentenceIndex];
     final sentenceText = chunk.text;
+    final localeForCloudCheck = (_selectedLocale ?? '').toLowerCase();
+    if (_shouldUseCloudTts(localeForCloudCheck)) {
+      await _speakSentenceViaCloud(chunk);
+      return;
+    }
 
-    // Normalize and clean text for TTS
     final normalized = _normalizeText(sentenceText);
     if (normalized.isEmpty) {
       // Empty sentence, move to next
@@ -18558,14 +18667,22 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     try {
       await _tts.stop();
     } catch (_) {}
+    try {
+      await _cloudPosSub?.cancel();
+      await _cloudStateSub?.cancel();
+      await _cloudPlayer?.stop();
+    } catch (_) {}
+    _isCloudSentence = false;
   }
 
   Future<void> _ttsPause() async {
     _ttsPaused = true;
-    // DO NOT clear _ttsBusy here - pause is not a completion
-
-    // DO NOT compute offsets - simply preserve _currentSentenceIndex
-
+    if (_isCloudSentence) {
+      try {
+        await _cloudPlayer?.pause();
+      } catch (_) {}
+      return; // flutter_tts'e dokunma
+    }
     try {
       await _tts.pause();
     } catch (_) {
@@ -18580,7 +18697,14 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     if (_ttsBusy && !_ttsPaused) {
       return;
     }
-
+    if (_isCloudSentence) {
+      _ttsPaused = false;
+      _ttsBusy = true;
+      try {
+        await _cloudPlayer?.play();
+      } catch (_) {}
+      return;
+    }
     // If TTS is not running (was stopped), restart from current sentence
     if (!_ttsRunning) {
       _ttsPaused = false;
@@ -20285,13 +20409,13 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     s = s.replaceAll('“', ''); // " sol çift tırnak
     s = s.replaceAll('”', ''); // " sağ çift tırnak
 
-    // Türkçe kesme işareti (apostrof): KELIME'ek → "KELIME ek" (boşluk ekle)
-    // Örn: AKP'ye → AKP ye, Türkiye'nin → Türkiye nin
+    // Türkçe kesme işareti (apostrof): KELIME'ek → "KELIMEek" (bitiştir, duraklama olmasın)
+    // Örn: AKP'ye → AKPye, Türkiye'nin → Türkiyenin
     s = s.replaceAllMapped(
       RegExp(
         r"([a-zA-Z\u00C0-\u024F\u011E\u011F\u0130\u0131\u015E\u015F\u00C7\u00E7\u00D6\u00F6\u00DC\u00FC])['’‘]([a-zA-Z\u00C0-\u024F\u011E\u011F\u0130\u0131\u015E\u015F\u00C7\u00E7\u00D6\u00F6\u00DC\u00FC])",
       ),
-      (m) => '${m.group(1)} ${m.group(2)}',
+      (m) => '${m.group(1)}${m.group(2)}',
     );
 
     s = s.replaceAll('‘', ''); // ‘ sol tek tırnak (kalan)
@@ -28867,5 +28991,62 @@ class _MiniPlayerButtonState extends State<_MiniPlayerButton> {
         ),
       ),
     );
+  }
+}
+
+class _CloudWordTiming {
+  final int charStart; // chunk.text içindeki ofset
+  final int charEnd;
+  final double timeStart;
+  double timeEnd;
+  _CloudWordTiming(this.charStart, this.charEnd, this.timeStart, this.timeEnd);
+}
+
+class _CloudTtsResult {
+  final String audioFilePath;
+  final List<_CloudWordTiming> timings;
+  _CloudTtsResult(this.audioFilePath, this.timings);
+}
+
+class CloudTtsService {
+  static final _functions =
+      FirebaseFunctions.instanceFor(region: 'europe-west3');
+
+  static Future<_CloudTtsResult> synthesize(String text) async {
+    final callable = _functions.httpsCallable('synthesizeTurkishTts');
+    final result = await callable.call<Map<String, dynamic>>({'text': text});
+    final data = result.data;
+
+    final String base64Audio = data['audioContent'];
+    final List<dynamic> rawTimepoints = data['timepoints'];
+
+    // Cloud Function'daki split(/\s+/) ile BİREBİR aynı tokenization —
+    // aksi halde kelime sınırları kayar.
+    final wordMatches = RegExp(r'\S+').allMatches(text).toList();
+
+    final sorted = List<Map<String, dynamic>>.from(rawTimepoints)
+      ..sort((a, b) {
+        final ai = int.parse((a['markName'] as String).substring(1));
+        final bi = int.parse((b['markName'] as String).substring(1));
+        return ai.compareTo(bi);
+      });
+
+    final timings = <_CloudWordTiming>[];
+    for (var i = 0; i < sorted.length && i < wordMatches.length; i++) {
+      final m = wordMatches[i];
+      final t = (sorted[i]['timeSeconds'] as num).toDouble();
+      timings.add(_CloudWordTiming(m.start, m.end, t, double.infinity));
+    }
+    for (var i = 0; i < timings.length - 1; i++) {
+      timings[i].timeEnd = timings[i + 1].timeStart;
+    }
+
+    final bytes = base64Decode(base64Audio);
+    final dir = await getTemporaryDirectory();
+    final file =
+        File('${dir.path}/er_tts_${DateTime.now().millisecondsSinceEpoch}.mp3');
+    await file.writeAsBytes(bytes, flush: true);
+
+    return _CloudTtsResult(file.path, timings);
   }
 }
