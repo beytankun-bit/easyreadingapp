@@ -492,6 +492,46 @@ Future<void> _updateLastUsedTimestamp() async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isIOS) {
+    // ── iOS-ONLY: her adım timeout'lu ve hataya dayanıklı ──────
+    Future<void> safeStep(
+      Future<void> Function() action, {
+      Duration timeout = const Duration(seconds: 6),
+    }) async {
+      try {
+        await action().timeout(timeout);
+      } catch (e) {
+        debugPrint('[BOOT] step failed/timeout: $e');
+      }
+    }
+
+    await safeStep(() async {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    });
+    await safeStep(() => _checkAndResetForNewBuild());
+    await safeStep(() => PremiumService.instance.load());
+    await safeStep(() => GoogleFonts.pendingFonts([GoogleFonts.lora()]));
+    await safeStep(() => NotificationService.init());
+
+    unawaited(PushService.register());
+    unawaited(_updateLastUsedTimestamp());
+
+    await Future.delayed(const Duration(milliseconds: 2000));
+
+    bool firstOpenShown = false;
+    await safeStep(() async {
+      firstOpenShown = await PremiumService.instance.isFirstOpenShown();
+    });
+
+    final String initialRoute = firstOpenShown ? '/reading' : '/welcome';
+    runApp(EasyReadingTestApp(initialRoute: initialRoute));
+    return;
+  }
+
+  // ── ANDROID FLOW — DEĞİŞTİRİLMEDİ ────────────────────────────
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
@@ -500,13 +540,9 @@ void main() async {
   await PremiumService.instance.load();
   await GoogleFonts.pendingFonts([GoogleFonts.lora()]);
 
-  // Bildirim sistemi başlat
   await NotificationService.init();
 
-  // FCM token al + Firestore'a kaydet (re-engagement push için)
   unawaited(PushService.register());
-
-  // Arka planda çalıştır — main thread'i bloklama
   unawaited(_updateLastUsedTimestamp());
 
   await Future.delayed(const Duration(milliseconds: 2000));
