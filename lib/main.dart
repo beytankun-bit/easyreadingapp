@@ -22401,6 +22401,11 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       if (g == 'male' || g == 'female') return g;
 
       final name = (v['name'] as String? ?? '').toLowerCase();
+
+      // Apple'ın resmi Türkçe ses isimleri (Android'de bu isimler hiç yok)
+      if (name.contains('cem')) return 'male';
+      if (name.contains('yelda')) return 'female';
+
       if (name.contains('male') ||
           name.contains('man') ||
           name.contains('masc')) {
