@@ -22378,6 +22378,37 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
 
     final lang = locale.split('-')[0].toLowerCase();
 
+    // iOS-ONLY: Türkçe + erkek ses isteniyorsa, öncelik sırası:
+    // Siri 1 → Siri 2 → Yelda → Cem (kullanıcı testiyle belirlendi)
+    if (Platform.isIOS && lang == 'tr' && gender.toLowerCase() == 'male') {
+      List<Map<String, dynamic>> trVoices() => _voices
+          .whereType<Map>()
+          .map((v) => v.cast<String, dynamic>())
+          .where((v) =>
+              (v['locale'] as String? ?? '').toLowerCase().startsWith('tr'))
+          .toList();
+
+      Map<String, dynamic>? findByNameParts(List<String> parts) {
+        final matches = trVoices().where((v) {
+          final vName = (v['name'] as String? ?? '').toLowerCase();
+          return parts.every((p) => vName.contains(p));
+        }).toList();
+        return matches.isNotEmpty ? matches.first : null;
+      }
+
+      final priorityOrder = [
+        ['siri', '1'],
+        ['siri', '2'],
+        ['yelda'],
+        ['cem'],
+      ];
+
+      for (final parts in priorityOrder) {
+        final found = findByNameParts(parts);
+        if (found != null) return found;
+      }
+    }
+
     // Cihazdan gelen ses listesini filtrele ve Map<String, dynamic>e cast et
     final List<Map<String, dynamic>> candidates = _voices
         .whereType<Map>()
@@ -22419,21 +22450,42 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       return g;
     }
 
+    // iOS-ONLY: Enhanced/Premium kaliteli sesleri tercih et
+    // (Android'in ses seçim davranışına dokunulmuyor)
+    int iosQualityScore(Map<String, dynamic> v) {
+      final q = v['quality'];
+      if (q is num) return q.toInt();
+      final qStr = (q?.toString() ?? '').toLowerCase();
+      final idStr = (v['identifier']?.toString() ?? '').toLowerCase();
+      final nameStr = (v['name']?.toString() ?? '').toLowerCase();
+      final combined = '$qStr $idStr $nameStr';
+      if (combined.contains('premium')) return 3;
+      if (combined.contains('enhanced')) return 2;
+      if (combined.contains('compact') || combined.contains('default')) {
+        return 1;
+      }
+      return 1; // bilinmiyorsa varsayılan/düşük kabul et
+    }
+
+    List<Map<String, dynamic>> pickBest(List<Map<String, dynamic>> list) {
+      if (list.isEmpty || !Platform.isIOS) return list;
+      final sorted = [...list]
+        ..sort((a, b) => iosQualityScore(b).compareTo(iosQualityScore(a)));
+      return sorted;
+    }
+
     final requested = gender.toLowerCase();
 
-    // 1) İstenen cinsiyete tam uyan ses varsa onu seç
-    final exact = candidates.where((v) => normGender(v) == requested).toList();
+    // 1) İstenen cinsiyete tam uyan ses varsa, aralarından en kalitelisini seç
+    final exact =
+        pickBest(candidates.where((v) => normGender(v) == requested).toList());
     if (exact.isNotEmpty) {
       return exact.first;
     }
 
-    // 2) İstenen cinsiyet bulunamadı → ilk mevcut sesi döndür
-    if (requested == 'male') {
-      return candidates.first;
-    }
-
-    // 3) Hiç gender bilgisi yoksa ya da eşleşme yoksa → ilk adayı döndür
-    return candidates.first;
+    // 2) İstenen cinsiyet bulunamadı → kalan adaylardan en kalitelisi
+    final ranked = pickBest(candidates);
+    return ranked.first;
   }
 
   // 🌐 WebLink dialog
@@ -26223,8 +26275,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                     ),
                   ),
                 ),
-                // Nova button (moved to actions for consistency)
-                novaButton,
+
                 const SizedBox(width: 6),
               ],
             ),
