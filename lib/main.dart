@@ -25987,13 +25987,14 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                             ),
                             onChanged: (_) {
                               _savePersisted();
-                              // Yazarken imleci görünür tut — klavye arkasında kalmasın
-                              WidgetsBinding.instance.addPostFrameCallback((_) {
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
-                                  if (mounted) _scrollToCursor();
-                                });
-                              });
+                              // GEÇİCİ TEŞHİS: Flutter'ın kendi caret-scroll
+                              // davranışını test etmek için devre dışı.
+                              // WidgetsBinding.instance.addPostFrameCallback((_) {
+                              //   WidgetsBinding.instance
+                              //       .addPostFrameCallback((_) {
+                              //     if (mounted) _scrollToCursor();
+                              //   });
+                              // });
                             },
                             contextMenuBuilder: (context, editableTextState) {
                               // AppLang.code.value okunarak dil her zaman güncel alınır
