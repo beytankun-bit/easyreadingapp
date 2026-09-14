@@ -13092,7 +13092,15 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         }
         // Found sentence ending - include it in the sentence
         int end = i + 1;
-
+        // Ardışık noktalama işaretlerini (..., ?!, !!! vb.) TEK sınır say —
+        // aksi halde her işaret ayrı, içi sadece noktalama olan bir "cümle"
+        // oluşturup TTS'in "nokta nokta nokta" diye okumasına yol açıyor.
+        while (end < splitText.length &&
+            (splitText[end] == '.' ||
+                splitText[end] == '?' ||
+                splitText[end] == '!')) {
+          end++;
+        }
         // Skip whitespace after punctuation
         while (end < splitText.length &&
             (splitText[end] == ' ' ||
@@ -18375,7 +18383,20 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       _prefetchNextCloudSentenceIfNeeded(_currentSentenceIndex);
 
       await _cloudPosSub?.cancel();
+      bool debugShown = false;
       _cloudPosSub = _cloudPlayer!.positionStream.listen((pos) {
+        if (!debugShown) {
+          debugShown = true;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    'DEBUG: stop=$_ttsStopRequested paused=$_ttsPaused timings=${_cloudTimings.length} pos=${pos.inMilliseconds}ms mode=$_readingMode'),
+                duration: const Duration(seconds: 6),
+              ),
+            );
+          }
+        }
         if (!mounted || _ttsStopRequested || _ttsPaused) return;
         try {
           final seconds = pos.inMilliseconds / 1000.0;
