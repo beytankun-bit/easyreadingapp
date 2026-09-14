@@ -12703,9 +12703,18 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       final viewTop = pos.pixels;
       final viewBottom = viewTop + visibleBottom;
 
-      if (cursorScrollY < viewTop + 20 || cursorScrollY > viewBottom - 40) {
-        final target = (cursorScrollY - visibleBottom * 0.5)
-            .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+      // İmleç görünür alanın tamamen dışına çıktıysa kaydır — küçük kenar
+      // paylarında "ortala" yapmıyoruz, bu sürekli zıplamaya yol açıyordu.
+      if (cursorScrollY < viewTop || cursorScrollY > viewBottom) {
+        double target;
+        if (cursorScrollY < viewTop) {
+          // Üstte kayboldu — imleci görünür alanın hemen üstüne getir
+          target = cursorScrollY - 24;
+        } else {
+          // Altta kayboldu (klavye dahil) — imleci görünür alanın hemen altına getir
+          target = cursorScrollY - visibleBottom + 24;
+        }
+        target = target.clamp(pos.minScrollExtent, pos.maxScrollExtent);
         if ((target - pos.pixels).abs() < 4) return;
         _scroll.jumpTo(target);
       }
