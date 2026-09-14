@@ -26594,77 +26594,92 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                                     if (PremiumService.instance.trialStarted &&
                                         !PremiumService
                                             .instance.isPremium.value)
-                                      GestureDetector(
-                                        onTap: () => navigateToPaywall(context),
-                                        child: Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 14, vertical: 10),
-                                          color: PremiumService
-                                                      .instance.trialDaysLeft <=
-                                                  2
-                                              ? Colors.red.shade50
-                                              : const Color(0xFFFFC9A96B)
-                                                  .withValues(alpha: 0.15),
-                                          child: Row(
-                                            children: [
-                                              Text(
-                                                PremiumService.instance
-                                                            .trialDaysLeft <=
-                                                        0
-                                                    ? '🔴'
-                                                    : PremiumService.instance
-                                                                .trialDaysLeft <=
-                                                            2
-                                                        ? '⚠️'
-                                                        : '🔥',
-                                                style: const TextStyle(
-                                                    fontSize: 14),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: Text(
+                                      Builder(builder: (context) {
+                                        final isDark =
+                                            Theme.of(context).brightness ==
+                                                Brightness.dark;
+                                        final isUrgent = PremiumService
+                                                .instance.trialDaysLeft <=
+                                            2;
+                                        final bgColor = isDark
+                                            ? (isUrgent
+                                                ? Colors.red.shade900
+                                                    .withValues(alpha: 0.35)
+                                                : const Color(0xFFFFC9A96B)
+                                                    .withValues(alpha: 0.25))
+                                            : (isUrgent
+                                                ? Colors.red.shade50
+                                                : const Color(0xFFFFC9A96B)
+                                                    .withValues(alpha: 0.15));
+                                        final textColor = isDark
+                                            ? (isUrgent
+                                                ? Colors.red.shade200
+                                                : Colors.white)
+                                            : (isUrgent
+                                                ? Colors.red.shade700
+                                                : const Color(0xFFFF2E2519));
+                                        return GestureDetector(
+                                          onTap: () =>
+                                              navigateToPaywall(context),
+                                          child: Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 14, vertical: 10),
+                                            color: bgColor,
+                                            child: Row(
+                                              children: [
+                                                Text(
                                                   PremiumService.instance
                                                               .trialDaysLeft <=
                                                           0
-                                                      ? t('trial_ended')
+                                                      ? '🔴'
                                                       : PremiumService.instance
-                                                                  .trialDaysLeft ==
-                                                              1
-                                                          ? t('trial_last_day')
-                                                          : t('trial_days_left')
-                                                              .replaceAll('{n}',
-                                                                  '${PremiumService.instance.trialDaysLeft}'),
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: PremiumService
-                                                                .instance
+                                                                  .trialDaysLeft <=
+                                                              2
+                                                          ? '⚠️'
+                                                          : '🔥',
+                                                  style: const TextStyle(
+                                                      fontSize: 14),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: Text(
+                                                    PremiumService.instance
                                                                 .trialDaysLeft <=
-                                                            2
-                                                        ? Colors.red.shade700
-                                                        : const Color(
-                                                            0xFFFF2E2519),
+                                                            0
+                                                        ? t('trial_ended')
+                                                        : PremiumService
+                                                                    .instance
+                                                                    .trialDaysLeft ==
+                                                                1
+                                                            ? t(
+                                                                'trial_last_day')
+                                                            : t('trial_days_left')
+                                                                .replaceAll(
+                                                                    '{n}',
+                                                                    '${PremiumService.instance.trialDaysLeft}'),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                      color: textColor,
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                              Text(
-                                                t('trial_subscribe'),
-                                                style: TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: PremiumService.instance
-                                                              .trialDaysLeft <=
-                                                          2
-                                                      ? Colors.red.shade700
-                                                      : const Color(
-                                                          0xFFFF2E2519),
+                                                Text(
+                                                  t('trial_subscribe'),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: textColor,
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ),
+                                        );
+                                      }),
+
                                     // Top controls bar - immersive modda anında gizlenir
                                     if (!_isImmersive)
                                       _buildTopControlsBar(context),
