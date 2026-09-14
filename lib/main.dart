@@ -13433,7 +13433,8 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   bool _isCloudSentence = false;
   List<_CloudWordTiming> _cloudTimings = [];
   int _cloudLastWordIdx = -1;
-
+  int? _cloudPrefetchIndex;
+  Future<_CloudPrefetchBundle>? _cloudPrefetchFuture;
   String _lastPreparedTtsText = '';
 
   Future<String> _prepareTtsTextForCloud(String rawInput) async {
@@ -13443,6 +13444,23 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
 
   bool _shouldUseCloudTts(String locale) {
     return Platform.isIOS && locale.toLowerCase().startsWith('tr');
+  }
+
+  void _prefetchNextCloudSentenceIfNeeded(int justStartedIndex) {
+    final nextIndex = justStartedIndex + 1;
+    if (nextIndex >= _sentenceChunks.length) return;
+    final nextChunk = _sentenceChunks[nextIndex];
+    final nextNormalized = _normalizeText(nextChunk.text);
+    final locale = (_selectedLocale ?? '').toLowerCase();
+    if (nextNormalized.isEmpty || !_shouldUseCloudTts(locale)) return;
+
+    _cloudPrefetchIndex = nextIndex;
+    _cloudPrefetchFuture = () async {
+      final cleaned = await _prepareTtsTextForCloud(nextNormalized);
+      final map = _buildSpokenToOrigMap(nextNormalized, cleaned);
+      final res = await CloudTtsService.synthesize(cleaned);
+      return _CloudPrefetchBundle(res, cleaned, map);
+    }();
   }
 
   int _currentSentenceIndex = 0;
@@ -18304,20 +18322,6 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       return;
     }
 
-    // Android'de zaten çalışan tam temizleme hattını (unvanlar, tarihler,
-    // sayılar, semboller vb.) burada da kullan — flutter_tts'e hiç
-    // dokunmadan, sadece metni hazırlamak için.
-    final cleanedText = await _prepareTtsTextForCloud(normalized);
-    if (cleanedText.trim().isEmpty) {
-      _currentSentenceIndex++;
-      await _ttsRunNextSentence();
-      return;
-    }
-
-    // Temizlenmiş (cloud'a giden) metin ↔ ekrandaki orijinal metin eşlemesi —
-    // vurgulamanın doğru karaktere denk gelmesi için gerekli.
-    final cloudSpokenToOrigMap = _buildSpokenToOrigMap(normalized, cleanedText);
-
     _isCloudSentence = true;
     _ttsBusy = true;
     if (mounted) {
@@ -18328,7 +18332,35 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     }
 
     try {
-      final result = await CloudTtsService.synthesize(cleanedText);
+      String cleanedText;
+      List<int> cloudSpokenToOrigMap;
+      _CloudTtsResult result;
+
+      // Bu cümle için önceden hazırlanmış (prefetch) ses varsa onu kullan —
+      // network beklemeden anında başla.
+      if (_cloudPrefetchIndex == _currentSentenceIndex &&
+          _cloudPrefetchFuture != null) {
+        final future = _cloudPrefetchFuture!;
+        _cloudPrefetchFuture = null;
+        _cloudPrefetchIndex = null;
+        final bundle = await future;
+        cleanedText = bundle.cleanedText;
+        cloudSpokenToOrigMap = bundle.map;
+        result = bundle.result;
+      } else {
+        cleanedText = await _prepareTtsTextForCloud(normalized);
+        cloudSpokenToOrigMap = _buildSpokenToOrigMap(normalized, cleanedText);
+        result = await CloudTtsService.synthesize(cleanedText);
+      }
+
+      if (cleanedText.trim().isEmpty) {
+        _isCloudSentence = false;
+        _ttsBusy = false;
+        _currentSentenceIndex++;
+        await _ttsRunNextSentence();
+        return;
+      }
+
       _cloudTimings = result.timings;
       _cloudLastWordIdx = -1;
 
@@ -18338,34 +18370,48 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         _cloudTimings.last.timeEnd = duration.inMilliseconds / 1000.0;
       }
 
+      // Bu cümle çalmaya başlar başlamaz, bir sonrakini arka planda hazırla —
+      // cümle geçişinde bekleme olmasın.
+      _prefetchNextCloudSentenceIfNeeded(_currentSentenceIndex);
+
       await _cloudPosSub?.cancel();
       _cloudPosSub = _cloudPlayer!.positionStream.listen((pos) {
         if (!mounted || _ttsStopRequested || _ttsPaused) return;
-        final seconds = pos.inMilliseconds / 1000.0;
-        int idx = -1;
-        for (final t in _cloudTimings) {
-          if (seconds >= t.timeStart && seconds < t.timeEnd) {
-            idx = _cloudTimings.indexOf(t);
-            break;
+        try {
+          final seconds = pos.inMilliseconds / 1000.0;
+          int idx = -1;
+          for (final t in _cloudTimings) {
+            if (seconds >= t.timeStart && seconds < t.timeEnd) {
+              idx = _cloudTimings.indexOf(t);
+              break;
+            }
           }
-        }
-        if (idx == -1 || idx == _cloudLastWordIdx) return;
-        _cloudLastWordIdx = idx;
-        final w = _cloudTimings[idx];
+          if (idx == -1 || idx == _cloudLastWordIdx) return;
+          _cloudLastWordIdx = idx;
+          final w = _cloudTimings[idx];
 
-        // cleanedText ofsetlerini normalized (orijinal) ofsetlere çevir
-        final mapLen = cloudSpokenToOrigMap.length;
-        final origStart =
-            cloudSpokenToOrigMap[w.charStart.clamp(0, mapLen - 1)];
-        final origEnd = cloudSpokenToOrigMap[w.charEnd.clamp(0, mapLen - 1)];
+          final mapLen = cloudSpokenToOrigMap.length;
+          final origStart =
+              cloudSpokenToOrigMap[w.charStart.clamp(0, mapLen - 1)];
+          final origEnd = cloudSpokenToOrigMap[w.charEnd.clamp(0, mapLen - 1)];
 
-        final uiStart =
-            (chunk.globalStart + origStart).clamp(0, _uiTextForReading.length);
-        final uiEnd =
-            (chunk.globalStart + origEnd).clamp(0, _uiTextForReading.length);
-        if (_readingMode == ReadingMode.both ||
-            _readingMode == ReadingMode.voiceOnly) {
-          _handleProgress(uiStart, uiEnd);
+          final uiStart = (chunk.globalStart + origStart)
+              .clamp(0, _uiTextForReading.length);
+          final uiEnd =
+              (chunk.globalStart + origEnd).clamp(0, _uiTextForReading.length);
+          if (_readingMode == ReadingMode.both ||
+              _readingMode == ReadingMode.voiceOnly) {
+            _handleProgress(uiStart, uiEnd);
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('CLOUD HIGHLIGHT HATASI: $e'),
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
         }
       });
 
@@ -18702,6 +18748,8 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       await _cloudPlayer?.stop();
     } catch (_) {}
     _isCloudSentence = false;
+    _cloudPrefetchFuture = null;
+    _cloudPrefetchIndex = null;
   }
 
   Future<void> _ttsPause() async {
@@ -20418,6 +20466,9 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
     // Sessizce sil — TTS'in isim okuyacağı semboller
     s = s.replaceAll(RegExp(r'!+'), ''); // ! !! !!! → sil (TTS "ünlem" okur)
     s = s.replaceAll(RegExp(r'\?{2,}'), ''); // ?? ??? → sil, tek ? kalır
+    s = s.replaceAll(
+        RegExp(r'\.{2,}'), ''); // ... → sil (TTS "nokta nokta nokta" okur)
+    s = s.replaceAll('\u2026', ''); // … (tek karakter üç nokta) → sil
     s = s.replaceAll('*', '');
     s = s.replaceAll('#', '');
     s = s.replaceAll('@', ' $at '); // @ → dile göre "at/et/arroba" vb.
@@ -29098,4 +29149,11 @@ class CloudTtsService {
 
     return _CloudTtsResult(file.path, timings);
   }
+}
+
+class _CloudPrefetchBundle {
+  final _CloudTtsResult result;
+  final String cleanedText;
+  final List<int> map;
+  _CloudPrefetchBundle(this.result, this.cleanedText, this.map);
 }
