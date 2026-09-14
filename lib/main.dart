@@ -18491,6 +18491,14 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       await _cloudPlayer!.play();
     } catch (e) {
       debugPrint('Cloud TTS hatasi: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('CLOUD SPEAK HATASI: $e'),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
       _isCloudSentence = false;
       _ttsBusy = false;
       _currentSentenceIndex++;

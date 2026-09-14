@@ -10,7 +10,7 @@ const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getMessaging } = require("firebase-admin/messaging");
 const { onCall } = require("firebase-functions/v2/https");
-const textToSpeech = require("@google-cloud/text-to-speech");
+const textToSpeech = require("@google-cloud/text-to-speech").v1beta1;
 const ttsClient = new textToSpeech.TextToSpeechClient();
 
 initializeApp();
