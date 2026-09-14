@@ -13477,7 +13477,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   List<_CloudWordTiming> _cloudTimings = [];
   int _cloudLastWordIdx = -1;
   int? _cloudPrefetchIndex;
-  Future<_CloudPrefetchBundle>? _cloudPrefetchFuture;
+  Future<_CloudPrefetchBundle?>? _cloudPrefetchFuture;
   String _lastPreparedTtsText = '';
 
   Future<String> _prepareTtsTextForCloud(String rawInput) async {
@@ -13499,10 +13499,15 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
 
     _cloudPrefetchIndex = nextIndex;
     _cloudPrefetchFuture = () async {
-      final cleaned = await _prepareTtsTextForCloud(nextNormalized);
-      final map = _buildSpokenToOrigMap(nextNormalized, cleaned);
-      final res = await CloudTtsService.synthesize(cleaned);
-      return _CloudPrefetchBundle(res, cleaned, map);
+      try {
+        final cleaned = await _prepareTtsTextForCloud(nextNormalized);
+        final map = _buildSpokenToOrigMap(nextNormalized, cleaned);
+        final res = await CloudTtsService.synthesize(cleaned);
+        return _CloudPrefetchBundle(res, cleaned, map);
+      } catch (e) {
+        debugPrint('Prefetch hatasi (normal akisa dusulecek): $e');
+        return null;
+      }
     }();
   }
 
@@ -18387,9 +18392,15 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         _cloudPrefetchFuture = null;
         _cloudPrefetchIndex = null;
         final bundle = await future;
-        cleanedText = bundle.cleanedText;
-        cloudSpokenToOrigMap = bundle.map;
-        result = bundle.result;
+        if (bundle != null) {
+          cleanedText = bundle.cleanedText;
+          cloudSpokenToOrigMap = bundle.map;
+          result = bundle.result;
+        } else {
+          cleanedText = await _prepareTtsTextForCloud(normalized);
+          cloudSpokenToOrigMap = _buildSpokenToOrigMap(normalized, cleanedText);
+          result = await CloudTtsService.synthesize(cleanedText);
+        }
       } else {
         cleanedText = await _prepareTtsTextForCloud(normalized);
         cloudSpokenToOrigMap = _buildSpokenToOrigMap(normalized, cleanedText);
@@ -18418,20 +18429,7 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       _prefetchNextCloudSentenceIfNeeded(_currentSentenceIndex);
 
       await _cloudPosSub?.cancel();
-      bool debugShown = false;
       _cloudPosSub = _cloudPlayer!.positionStream.listen((pos) {
-        if (!debugShown) {
-          debugShown = true;
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    'DEBUG: stop=$_ttsStopRequested paused=$_ttsPaused timings=${_cloudTimings.length} pos=${pos.inMilliseconds}ms mode=$_readingMode'),
-                duration: const Duration(seconds: 6),
-              ),
-            );
-          }
-        }
         if (!mounted || _ttsStopRequested || _ttsPaused) return;
         try {
           final seconds = pos.inMilliseconds / 1000.0;
@@ -18500,14 +18498,6 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
       await _cloudPlayer!.play();
     } catch (e) {
       debugPrint('Cloud TTS hatasi: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('CLOUD SPEAK HATASI: $e'),
-            duration: const Duration(seconds: 8),
-          ),
-        );
-      }
       _isCloudSentence = false;
       _ttsBusy = false;
       _currentSentenceIndex++;
