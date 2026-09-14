@@ -13089,6 +13089,32 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
             i++;
             continue; // Romen rakamı noktasında kesme
           }
+          // Bilinen kısaltmalardan sonra cümle sonu sayma (Prof. Dr. Hz. vb.)
+          const abbreviations = {
+            'PROF',
+            'DOÇ',
+            'DR',
+            'YRD',
+            'OP',
+            'AV',
+            'MÜH',
+            'HZ',
+            'VB',
+            'VS',
+            'VD',
+            'YY',
+            'SY',
+            'NO',
+            'SOK',
+            'CAD',
+            'BUL',
+            'APT',
+            'KAT',
+          };
+          if (abbreviations.contains(word)) {
+            i++;
+            continue; // Kısaltma noktasında kesme
+          }
         }
         // Found sentence ending - include it in the sentence
         int end = i + 1;
@@ -25946,7 +25972,10 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                               _savePersisted();
                               // Yazarken imleci görünür tut — klavye arkasında kalmasın
                               WidgetsBinding.instance.addPostFrameCallback((_) {
-                                _scrollToCursor();
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (mounted) _scrollToCursor();
+                                });
                               });
                             },
                             contextMenuBuilder: (context, editableTextState) {
