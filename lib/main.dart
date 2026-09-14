@@ -29191,12 +29191,13 @@ class CloudTtsService {
     // aksi halde kelime sınırları kayar.
     final wordMatches = RegExp(r'\S+').allMatches(text).toList();
 
-    final sorted = List<Map<String, dynamic>>.from(rawTimepoints)
-      ..sort((a, b) {
-        final ai = int.parse((a['markName'] as String).substring(1));
-        final bi = int.parse((b['markName'] as String).substring(1));
-        return ai.compareTo(bi);
-      });
+    final sorted =
+        rawTimepoints.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+          ..sort((a, b) {
+            final ai = int.parse((a['markName'] as String).substring(1));
+            final bi = int.parse((b['markName'] as String).substring(1));
+            return ai.compareTo(bi);
+          });
 
     final timings = <_CloudWordTiming>[];
     for (var i = 0; i < sorted.length && i < wordMatches.length; i++) {
