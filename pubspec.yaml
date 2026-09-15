@@ -2,7 +2,7 @@ name: easyreading_rebuild
 description: EasyReading app by Beytan Kun.
 publish_to: 'none'
 
-version: 0.8.4+110
+version: 0.8.4+111
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -91,7 +91,7 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  ios: false
+  ios: true
   image_path: "assets/icon/app_icon.png"
   adaptive_icon_background: "#FCF3E3"
   adaptive_icon_foreground: "assets/icon/app_icon.png"
@@ -104,7 +104,7 @@ flutter_native_splash:
   android_12:
     image: assets/icon/splash_icon.png
     color: "#FCF3E3"
-  ios: false
+  ios: true
 
 analyzer:
   exclude:
