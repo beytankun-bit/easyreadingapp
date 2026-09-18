@@ -2,7 +2,7 @@ name: easyreading_rebuild
 description: EasyReading app by Beytan Kun.
 publish_to: 'none'
 
-version: 0.8.4+115
+version: 0.8.4+116
 
 environment:
   sdk: ">=3.3.0 <4.0.0"

@@ -7954,6 +7954,51 @@ class _PaywallScreenState extends State<PaywallScreen>
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 10, color: Color(0xFFBBAA88)),
               ),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: () => launchUrl(
+                      Uri.parse(
+                        'https://supreme-citipati-7d3.notion.site/Privacy-Policy-for-EasyReading-3459769daefe8026aeb8e3a628ae1235',
+                      ),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: const Text(
+                      'Privacy Policy',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFBBAA88),
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      '·',
+                      style: TextStyle(fontSize: 10, color: Color(0xFFBBAA88)),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => launchUrl(
+                      Uri.parse(
+                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                      ),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: const Text(
+                      'Terms of Use',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFFBBAA88),
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ]),
           ),
         ])),
