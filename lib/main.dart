@@ -7515,7 +7515,7 @@ class _TrialOnboardingScreenState extends State<TrialOnboardingScreen>
                   ),
                   child: Text(t('trial.start'),
                       style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w700)),
+                          fontSize: 18, fontWeight: FontWeight.w700)),
                 ),
               ),
               const SizedBox(height: 8),
@@ -7539,7 +7539,7 @@ class _TrialOnboardingScreenState extends State<TrialOnboardingScreen>
                     style: const TextStyle(
                         color: _gold,
                         fontWeight: FontWeight.w600,
-                        fontSize: 13),
+                        fontSize: 15),
                   ),
                 ),
               ),
@@ -7575,7 +7575,7 @@ class _TrialOnboardingScreenState extends State<TrialOnboardingScreen>
                                 'Save ${PremiumService.instance.savePercent}',
                                 style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 10,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w700)),
                           ),
                           const SizedBox(width: 6),
@@ -7585,33 +7585,80 @@ class _TrialOnboardingScreenState extends State<TrialOnboardingScreen>
                             style: const TextStyle(
                                 color: _gold,
                                 fontWeight: FontWeight.w600,
-                                fontSize: 13),
+                                fontSize: 15),
                           ),
                         ],
                       ),
                       const SizedBox(height: 2),
                       Text(
                         '${PremiumService.instance.yearlyPerMonth} / month',
-                        style: TextStyle(
-                            color: _gold.withValues(alpha: 0.7), fontSize: 11),
+                        style: TextStyle(color: _gold, fontSize: 13),
                       ),
                     ],
                   ),
                 ),
               ),
               const SizedBox(height: 6),
-              // Secured by Google Play
+              // Secured by Google Play / App Store
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.lock_rounded, size: 11, color: Colors.grey),
+                  Icon(Icons.lock_rounded,
+                      size: 13, color: Colors.grey.shade700),
                   const SizedBox(width: 4),
                   Text(
-                    'Secured by Google Play · ${t('paywall.cancel')}',
-                    style: const TextStyle(fontSize: 10, color: Colors.grey),
-                  ),
+                    '${Platform.isIOS ? 'Secured by App Store' : 'Secured by Google Play'} · ${t('paywall.cancel')}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                  ), // Text
                 ],
-              ),
+              ), // Row
+              const SizedBox(height: 6),
+              // Privacy Policy / Terms of Use
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: () => launchUrl(
+                      Uri.parse(
+                        'https://supreme-citipati-7d3.notion.site/Privacy-Policy-for-EasyReading-3459769daefe8026aeb8e3a628ae1235',
+                      ),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: Text(
+                      'Privacy Policy',
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                      ), // TextStyle
+                    ), // Text
+                  ), // GestureDetector
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: Text(
+                      '·',
+                      style:
+                          TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                    ), // Text
+                  ), // Padding
+                  GestureDetector(
+                    onTap: () => launchUrl(
+                      Uri.parse(
+                        'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/',
+                      ),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    child: Text(
+                      'Terms of Use',
+                      style: TextStyle(
+                        color: Colors.grey.shade700,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                      ), // TextStyle
+                    ), // Text
+                  ), // GestureDetector
+                ],
+              ), // Row
               const SizedBox(height: 4),
               // Restore
               TextButton(
@@ -7626,13 +7673,13 @@ class _TrialOnboardingScreenState extends State<TrialOnboardingScreen>
                   if (ok && mounted) widget.onDone();
                 },
                 child: Text(t('paywall.restore'),
-                    style: TextStyle(fontSize: 12, color: _light)),
+                    style: TextStyle(fontSize: 15, color: _light)),
               ),
               const SizedBox(height: 2),
               TextButton(
                 onPressed: _skipTrial,
                 child: Text(t('trial.skip'),
-                    style: TextStyle(fontSize: 12, color: _light)),
+                    style: TextStyle(fontSize: 15, color: _light)),
               ),
               const SizedBox(height: 8),
             ]),
