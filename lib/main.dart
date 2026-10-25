@@ -13216,6 +13216,22 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
             i++;
             continue; // Kısaltma noktasında kesme
           }
+          // Sıra sayısı: "2. gün", "15. yüzyıl" → sayıdan sonraki nokta, ardından
+          // (aynı satırda) küçük harfle başlayan bir kelime geliyorsa cümle sonu
+          // değildir. Yoksa "ikinci" ile "gün" ayrı okunup arada uzun duraklama oluyor.
+          if (RegExp(r'^\d{1,4}$').hasMatch(word)) {
+            int k = i + 1;
+            while (k < splitText.length &&
+                (splitText[k] == ' ' || splitText[k] == '\t')) {
+              k++;
+            }
+            if (k > i + 1 &&
+                k < splitText.length &&
+                RegExp(r'[a-zçğıöşü]').hasMatch(splitText[k])) {
+              i++;
+              continue; // Sıra sayısı noktasında kesme
+            }
+          }
         }
         // Found sentence ending - include it in the sentence
         int end = i + 1;
@@ -20513,6 +20529,24 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
         },
       );
     }
+    // Uygulamanın adı: kesme işaretinden sonraki ek, isme bitiştirilince
+    // ("Readinge") Türkçe ses "Readinç" diyor. Eskiden olduğu gibi ek ayrı
+    // okunsun: "Easy Reading'e" → "Easy Reading e".
+    result = result.replaceAllMapped(
+      RegExp(r"(Easy\s?Reading)['\u2019\u2018]([a-zçğıöşü]+)",
+          caseSensitive: false),
+      (m) => '${m.group(1)} ${m.group(2)}',
+    );
+
+    // "tabi" (= elbette) yaygın bir yazım; ses motoru bunu "tâbi" (bağlı) sanıp
+    // "taabi" diye uzatıyor. Okunurken "tabii" yapılır. "vergiye tabi olmak",
+    // "teste tabi tutulmak" gibi "bağlı" anlamındaki kullanımlara dokunulmaz.
+    result = result.replaceAllMapped(
+      RegExp(
+          r'(?<![a-zA-ZçğışöüÇĞİŞÖÜ])([Tt])abi(?![a-zA-ZçğışöüÇĞİŞÖÜ])(?!\s+(?:ol|tut|kıl|değil|kal))'),
+      (m) => '${m.group(1)}abii',
+    );
+
     // Bazı kısaltmalar (EPUB gibi) tamamen büyük harfli kalırsa TTS harf harf okuyor;
     // küçük harfe çevirip tek kelime gibi okunmasını sağlıyoruz.
     const Map<String, String> forceLowercaseAcronyms = {
@@ -24357,9 +24391,9 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
   String _getDemoText(String lang) {
     switch (lang) {
       case 'tr':
-        return "Easy Reading'e Hoş Geldiniz! 🎧\n\n"
-            "Bu uygulama, herhangi bir metni gerçek zamanlı kelime vurgusuyla sesli olarak okur.\n\n"
-            "Sesi duymak için Oynat ▶ düğmesine dokunun. "
+        return "Easy Reading uygulamasına hoş geldiniz! 🎧\n\n"
+            "Bu bir demo metnidir. Bu uygulama, herhangi bir metni gerçek zamanlı kelime vurgusuyla sesli olarak okur.\n\n"
+            "Metin ekledikten sonra sesi duymak için Oynat ▶ düğmesine dokunun. "
             "SES, KAYDIRMA veya İKİSİ BİRDEN modunu deneyin.\n\n"
             "Kendi metninizi yapıştırabilir, PDF veya EPUB açabilir "
             "ya da basılı metni taramak için kamerayı kullanabilirsiniz.\n\n"
@@ -26068,6 +26102,9 @@ class _ReadingPageState extends State<ReadingPage> with WidgetsBindingObserver {
                                   horizontal: hPadding, vertical: 12),
                             ),
                             onChanged: (_) {
+                              // Kullanıcının klavyeyle yazdığı metin şiir gibi
+                              // ortalanıp italik yapılmasın (yapıştırma gibi).
+                              _userPastedText = true;
                               _savePersisted();
                               // GEÇİCİ TEŞHİS: Flutter'ın kendi caret-scroll
                               // davranışını test etmek için devre dışı.
